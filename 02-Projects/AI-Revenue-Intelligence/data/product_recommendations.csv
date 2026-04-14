@@ -1,0 +1,37 @@
+BaseProduct,RecommendedProduct,CoPurchaseScore
+Advanced PCB Board,Anesthesia Machine,160
+Advanced PCB Board,Control Unit Module,157
+Advanced PCB Board,Operating Table,157
+Anesthesia Machine,Smart Lock Control Board,172
+Anesthesia Machine,Control Unit Module,171
+Anesthesia Machine,Patient Monitoring Module,170
+Control Unit Module,Anesthesia Machine,171
+Control Unit Module,Patient Monitoring Module,166
+Control Unit Module,Smart Lock Control Board,165
+Drone Navigation Module,Anesthesia Machine,169
+Drone Navigation Module,Smart Lock Control Board,159
+Drone Navigation Module,Surgical Light System,158
+Operating Table,Anesthesia Machine,168
+Operating Table,Patient Monitoring Module,165
+Operating Table,Smart Lock Control Board,162
+Patient Monitoring Module,Anesthesia Machine,170
+Patient Monitoring Module,Control Unit Module,166
+Patient Monitoring Module,Operating Table,165
+Robotics Motion Controller,Anesthesia Machine,166
+Robotics Motion Controller,Control Unit Module,160
+Robotics Motion Controller,Patient Monitoring Module,160
+Sensor Processing Unit,Anesthesia Machine,169
+Sensor Processing Unit,Patient Monitoring Module,165
+Sensor Processing Unit,Control Unit Module,160
+Smart Home Controller,Anesthesia Machine,167
+Smart Home Controller,Patient Monitoring Module,159
+Smart Home Controller,Smart Lock Control Board,157
+Smart Lock Control Board,Anesthesia Machine,172
+Smart Lock Control Board,Control Unit Module,165
+Smart Lock Control Board,Patient Monitoring Module,165
+Surgical Light System,Anesthesia Machine,167
+Surgical Light System,Control Unit Module,161
+Surgical Light System,Smart Lock Control Board,161
+Wireless Sensor Node,Anesthesia Machine,164
+Wireless Sensor Node,Patient Monitoring Module,156
+Wireless Sensor Node,Control Unit Module,155
