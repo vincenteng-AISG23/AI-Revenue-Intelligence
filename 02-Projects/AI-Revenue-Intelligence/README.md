@@ -232,7 +232,8 @@ For business leaders, this translates into:
 
 From a CIO perspective, the focus is not just on deploying AI models, but on building scalable and sustainable capabilities that integrate seamlessly into enterprise systems.
 
-The future of digital enterprises will be defined by how effectively they operationalize AI — transforming data into actionable intelligence and measurable business outcomes.
+The future of digital enterprises will be defined by how effectively they operationalize AI — transforming data into 
+actionable intelligence and measurable business outcomes.
 
 ---
 
@@ -250,6 +251,10 @@ The future of digital enterprises will be defined by how effectively they operat
 
 **Vincent Eng**
 Group Head of IT | AI Transformation Leader
+
+---
+
+This project reflects my approach to leading AI-driven transformation — bridging enterprise architecture, data governance, and business strategy to deliver scalable, real-world impact.
 
 ---
 
