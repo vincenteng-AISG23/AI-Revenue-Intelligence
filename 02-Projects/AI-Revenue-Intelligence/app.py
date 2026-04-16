@@ -1,918 +1,820 @@
 # ============================================================
-# PROJECT:
-# Enterprise AI Revenue Intelligence Platform
+# ENTERPRISE AI REVENUE INTELLIGENCE PLATFORM (CIO VERSION)
+# Keeps the existing project file structure unchanged
 #
-# FILE:
-# app.py
-#
-# PURPOSE:
-# Build a CEO / CIO-ready revenue intelligence dashboard with:
-# 1. Executive KPI summary
-# 2. Revenue analysis by business line
-# 3. Revenue analysis by region
-# 4. Profit analysis by product
-# 5. Monthly revenue trend
-# 6. Group-level revenue forecast
-# 7. Business-line forecast accountability
-# 8. Plant-level forecast accountability
-# 9. Top-customer forecast table
-# 10. Margin watchlist
-#
-# BUSINESS INTENT:
-# This dashboard is designed to support senior leadership with:
-# - group-level visibility
-# - GM accountability by business line
-# - plant accountability by country and site
-# - customer focus for commercial action
-# - margin discipline for profitability improvement
+# Expected existing files:
+# - data/sales_transactions.csv
+# - data/customer_segments.csv
+# - data/product_recommendations.csv
 # ============================================================
 
 from __future__ import annotations
 
-import hashlib
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
 from sklearn.linear_model import LinearRegression
 
-
-# ============================================================
-# SECTION 1: PAGE CONFIGURATION
-# ============================================================
 st.set_page_config(
     page_title="Enterprise AI Revenue Intelligence Platform",
-    page_icon="📈",
     layout="wide",
 )
 
+# ============================================================
+# FILE PATHS
+# ============================================================
+DATA_DIR = Path("data")
+SALES_FILE = DATA_DIR / "sales_transactions.csv"
+SEGMENTS_FILE = DATA_DIR / "customer_segments.csv"
+RECOMMENDATIONS_FILE = DATA_DIR / "product_recommendations.csv"
 
 # ============================================================
-# SECTION 2: HELPER FUNCTIONS FOR COUNTRY / PLANT MAPPING
-#
-# PURPOSE:
-# Enrich the dataset so the dashboard can support accountability
-# at country and plant level.
-#
-# IMPORTANT:
-# These are realistic simulated plant mappings for management
-# reporting and forecasting use.
+# STYLING
 # ============================================================
-def assign_country(region: str) -> str:
+st.markdown(
     """
-    Map region field into country field.
+    <style>
+        .main-title {
+            font-size: 38px;
+            font-weight: 800;
+            margin-bottom: 0.2rem;
+            color: #111827;
+        }
+        .sub-title {
+            font-size: 17px;
+            color: #4B5563;
+            margin-bottom: 1rem;
+        }
+        .section-title {
+            font-size: 28px;
+            font-weight: 800;
+            color: #111827;
+            margin-bottom: 0.2rem;
+        }
+        .section-note {
+            font-size: 15px;
+            color: #6B7280;
+            margin-bottom: 0.9rem;
+        }
+        div[data-testid="stMetric"] {
+            background-color: white;
+            border: 1px solid #E5E7EB;
+            border-radius: 12px;
+            padding: 14px;
+        }
+        section[data-testid="stSidebar"] {
+            background-color: #F8FAFC;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
-    Parameters
-    ----------
-    region : str
-        Original region value from the dataset.
-
-    Returns
-    -------
-    str
-        Country value.
-    """
-    if region == "China":
-        return "China"
-    if region == "Indonesia":
-        return "Indonesia"
-    if region == "Thailand":
-        return "Thailand"
-    if region == "Malaysia":
-        return "Malaysia"
-    if region == "Singapore":
-        return "Singapore"
-    return "Other"
+# ============================================================
+# HELPERS
+# ============================================================
+def find_column(df: pd.DataFrame, candidates: list[str]) -> str | None:
+    lower_map = {col.lower(): col for col in df.columns}
+    for candidate in candidates:
+        if candidate.lower() in lower_map:
+            return lower_map[candidate.lower()]
+    return None
 
 
-def assign_plant(customer_id: str, country: str) -> str:
-    """
-    Assign a deterministic plant to each customer-country pair.
+def fmt_currency(value: float) -> str:
+    return f"${value:,.0f}"
 
-    WHY DETERMINISTIC:
-    A customer should not jump randomly between plants every time
-    the app reloads. This function uses a stable hash so the same
-    customer always maps to the same plant.
 
-    Parameters
-    ----------
-    customer_id : str
-        Customer identifier.
-    country : str
-        Country identifier.
-
-    Returns
-    -------
-    str
-        Plant name.
-    """
-    plant_map = {
-        "China": ["Suzhou", "Changchun", "Zhejiang"],
-        "Indonesia": ["Surabaya", "Jakarta"],
-        "Thailand": ["Chiangmai", "Bangkok"],
-        "Malaysia": ["Johor", "Penang", "KL"],
-        "Singapore": ["Singapore"],
-    }
-
-    plants = plant_map.get(country, ["Unknown"])
-
-    stable_key = f"{customer_id}-{country}"
-    stable_hash = hashlib.md5(stable_key.encode()).hexdigest()
-    plant_index = int(stable_hash, 16) % len(plants)
-
-    return plants[plant_index]
+def safe_divide(a: float, b: float) -> float:
+    return a / b if b else 0.0
 
 
 # ============================================================
-# SECTION 3: LOAD DATA
-#
-# PURPOSE:
-# Load transaction data and prepare the time-based and
-# organization-based fields needed by the dashboard.
+# LOAD DATA
 # ============================================================
 @st.cache_data
+def load_sales_data() -> pd.DataFrame:
+    if not SALES_FILE.exists():
+        raise FileNotFoundError(
+            f"Missing file: {SALES_FILE}. Please keep using your existing working data folder."
+        )
+    return pd.read_csv(SALES_FILE)
 
-def load_customer_segments() -> pd.DataFrame:
-    """
-    Load customer segmentation output.
-    """
-    return pd.read_csv("data/customer_segments.csv")
 
 @st.cache_data
-def load_recommendations() -> pd.DataFrame:
-    """
-    Load product recommendation output.
-    """
-    return pd.read_csv("data/product_recommendations.csv")
+def load_segments_data() -> pd.DataFrame | None:
+    if SEGMENTS_FILE.exists():
+        return pd.read_csv(SEGMENTS_FILE)
+    return None
 
 
-def load_data() -> pd.DataFrame:
-    """
-    Load and prepare the source transaction dataset.
+@st.cache_data
+def load_recommendations_data() -> pd.DataFrame | None:
+    if RECOMMENDATIONS_FILE.exists():
+        return pd.read_csv(RECOMMENDATIONS_FILE)
+    return None
 
-    Returns
-    -------
-    pd.DataFrame
-        Cleaned and enriched transaction data.
-    """
-    df = pd.read_csv("data/sales_transactions.csv")
 
-    # Convert order date for monthly analytics
-    df["OrderDate"] = pd.to_datetime(df["OrderDate"])
-    df["YearMonth"] = df["OrderDate"].dt.to_period("M").astype(str)
+# ============================================================
+# PREPARE SALES DATA
+# ============================================================
+def prepare_sales_data(df: pd.DataFrame) -> pd.DataFrame:
+    prepared_df = df.copy()
 
-    # Add country field
-    df["Country"] = df["Region"].apply(assign_country)
+    date_col = find_column(prepared_df, ["OrderDate", "Date", "InvoiceDate"])
+    revenue_col = find_column(prepared_df, ["Revenue", "SalesAmount", "NetSales"])
+    profit_col = find_column(prepared_df, ["Profit", "GrossProfit"])
+    qty_col = find_column(prepared_df, ["Quantity", "Qty"])
+    unit_price_col = find_column(prepared_df, ["UnitPrice", "Price"])
+    discount_col = find_column(prepared_df, ["Discount", "DiscountPct"])
+    customer_id_col = find_column(prepared_df, ["CustomerID", "CustomerId"])
+    customer_name_col = find_column(prepared_df, ["CustomerName"])
+    region_col = find_column(prepared_df, ["Region", "Country"])
+    plant_col = find_column(prepared_df, ["Plant"])
+    business_line_col = find_column(prepared_df, ["BusinessLine", "Business_Line"])
+    sales_channel_col = find_column(prepared_df, ["SalesChannel", "Channel"])
+    product_name_col = find_column(prepared_df, ["ProductName"])
+    category_col = find_column(prepared_df, ["Category"])
 
-    # Add plant field using stable mapping
-    df["Plant"] = df.apply(
-        lambda row: assign_plant(row["CustomerID"], row["Country"]),
-        axis=1,
+    if date_col:
+        prepared_df[date_col] = pd.to_datetime(prepared_df[date_col], errors="coerce")
+
+    if revenue_col is None and qty_col and unit_price_col:
+        prepared_df["Revenue"] = (
+            prepared_df[qty_col].fillna(0) * prepared_df[unit_price_col].fillna(0)
+        )
+        if discount_col:
+            discount_series = prepared_df[discount_col].fillna(0)
+            if discount_series.max() > 1:
+                discount_series = discount_series / 100.0
+            prepared_df["Revenue"] = prepared_df["Revenue"] * (1 - discount_series)
+        revenue_col = "Revenue"
+
+    if profit_col is None and revenue_col:
+        if "Cost" in prepared_df.columns:
+            prepared_df["Profit"] = prepared_df[revenue_col] - prepared_df["Cost"]
+        else:
+            prepared_df["Profit"] = prepared_df[revenue_col] * 0.35
+        profit_col = "Profit"
+
+    rename_map = {}
+    if date_col and date_col != "OrderDate":
+        rename_map[date_col] = "OrderDate"
+    if revenue_col and revenue_col != "Revenue":
+        rename_map[revenue_col] = "Revenue"
+    if profit_col and profit_col != "Profit":
+        rename_map[profit_col] = "Profit"
+    if customer_id_col and customer_id_col != "CustomerID":
+        rename_map[customer_id_col] = "CustomerID"
+    if customer_name_col and customer_name_col != "CustomerName":
+        rename_map[customer_name_col] = "CustomerName"
+    if region_col and region_col != "Country":
+        rename_map[region_col] = "Country"
+    if plant_col and plant_col != "Plant":
+        rename_map[plant_col] = "Plant"
+    if business_line_col and business_line_col != "BusinessLine":
+        rename_map[business_line_col] = "BusinessLine"
+    if sales_channel_col and sales_channel_col != "SalesChannel":
+        rename_map[sales_channel_col] = "SalesChannel"
+    if product_name_col and product_name_col != "ProductName":
+        rename_map[product_name_col] = "ProductName"
+    if category_col and category_col != "Category":
+        rename_map[category_col] = "Category"
+
+    prepared_df = prepared_df.rename(columns=rename_map)
+
+    if "OrderDate" in prepared_df.columns:
+        prepared_df["MonthStart"] = prepared_df["OrderDate"].dt.to_period("M").dt.to_timestamp()
+
+    return prepared_df
+
+
+# ============================================================
+# FORECASTING
+# ============================================================
+def build_monthly_forecast(df: pd.DataFrame, forecast_months: int = 3) -> tuple[pd.DataFrame, pd.DataFrame]:
+    if "MonthStart" not in df.columns or "Revenue" not in df.columns:
+        return pd.DataFrame(), pd.DataFrame()
+
+    monthly_df = (
+        df.groupby("MonthStart", as_index=False)["Revenue"]
+        .sum()
+        .sort_values("MonthStart")
+        .reset_index(drop=True)
     )
 
-    return df
+    if monthly_df.empty or len(monthly_df) < 2:
+        return monthly_df, pd.DataFrame()
 
-
-# ============================================================
-# SECTION 4: GENERIC FORECAST FUNCTION
-#
-# PURPOSE:
-# Forecast monthly values using Linear Regression.
-#
-# NOTE:
-# This is a baseline model suitable for first-phase predictive
-# analytics. It can be upgraded later to more advanced methods.
-# ============================================================
-def generate_forecast_from_monthly(
-    monthly_df: pd.DataFrame,
-    value_column: str,
-    forecast_months: int = 6,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Generate forecast from monthly aggregated data.
-
-    Parameters
-    ----------
-    monthly_df : pd.DataFrame
-        Monthly aggregated data.
-    value_column : str
-        Column name to forecast.
-    forecast_months : int
-        Number of future months to predict.
-
-    Returns
-    -------
-    tuple[pd.DataFrame, pd.DataFrame]
-        Historical monthly data and future forecast data.
-    """
-    historical_df = monthly_df.copy().reset_index(drop=True)
-    historical_df["MonthIndex"] = np.arange(len(historical_df))
-
-    X = historical_df[["MonthIndex"]]
-    y = historical_df[value_column]
+    monthly_df["t"] = np.arange(len(monthly_df))
 
     model = LinearRegression()
-    model.fit(X, y)
+    model.fit(monthly_df[["t"]], monthly_df["Revenue"])
 
-    future_index = np.arange(len(historical_df), len(historical_df) + forecast_months)
-    future_df = pd.DataFrame({"MonthIndex": future_index})
+    future_t = np.arange(len(monthly_df), len(monthly_df) + forecast_months)
+    future_dates = pd.date_range(
+        start=monthly_df["MonthStart"].max() + pd.offsets.MonthBegin(1),
+        periods=forecast_months,
+        freq="MS",
+    )
 
-    forecast_values = model.predict(future_df[["MonthIndex"]])
+    forecast_values = model.predict(pd.DataFrame({"t": future_t}))
+    forecast_values = np.maximum(forecast_values, 0)
 
     forecast_df = pd.DataFrame(
         {
-            "MonthIndex": future_index,
-            "ForecastValue": forecast_values,
+            "MonthStart": future_dates,
+            "ForecastRevenue": forecast_values,
         }
     )
 
-    return historical_df, forecast_df
+    return monthly_df, forecast_df
 
 
 # ============================================================
-# SECTION 5: GROUP FORECAST
+# CUSTOMER SEGMENT SUMMARY
 # ============================================================
-def generate_group_forecast(df: pd.DataFrame, forecast_months: int = 6) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Generate total group-level revenue forecast.
-    """
-    monthly = (
-        df.groupby("YearMonth", as_index=False)["Revenue"]
-        .sum()
-        .sort_values("YearMonth")
-    )
+def summarize_customer_segments(segment_df: pd.DataFrame | None) -> pd.DataFrame:
+    if segment_df is None or segment_df.empty:
+        return pd.DataFrame()
 
-    return generate_forecast_from_monthly(
-        monthly_df=monthly,
-        value_column="Revenue",
-        forecast_months=forecast_months,
-    )
+    segment_col = find_column(segment_df, ["SegmentName"])
+    revenue_col = find_column(segment_df, ["TotalRevenue", "Revenue"])
+    profit_col = find_column(segment_df, ["TotalProfit", "Profit"])
+    recency_col = find_column(segment_df, ["LastPurchaseDaysAgo", "AvgRecency"])
 
+    if segment_col is None:
+        return pd.DataFrame()
 
-# ============================================================
-# SECTION 6: BUSINESS LINE FORECAST ACCOUNTABILITY
-# ============================================================
-def create_business_line_forecast_table(df: pd.DataFrame, forecast_months: int = 3) -> pd.DataFrame:
-    """
-    Create business-line accountability table for leadership.
+    summary = segment_df.groupby(segment_col).size().reset_index(name="Customers")
 
-    Returns
-    -------
-    pd.DataFrame
-        Forecast accountability table by business line.
-    """
-    result_rows: list[dict] = []
+    if revenue_col:
+        rev_sum = segment_df.groupby(segment_col)[revenue_col].sum().reset_index(name="SegmentRevenue")
+        rev_avg = segment_df.groupby(segment_col)[revenue_col].mean().reset_index(name="AvgRevenuePerCustomer")
+        summary = summary.merge(rev_sum, on=segment_col, how="left")
+        summary = summary.merge(rev_avg, on=segment_col, how="left")
 
-    for business_line in sorted(df["BusinessLine"].unique()):
-        sub_df = df[df["BusinessLine"] == business_line].copy()
+    if profit_col:
+        prof_avg = segment_df.groupby(segment_col)[profit_col].mean().reset_index(name="AvgProfitPerCustomer")
+        summary = summary.merge(prof_avg, on=segment_col, how="left")
 
-        monthly = (
-            sub_df.groupby("YearMonth", as_index=False)
-            .agg({"Revenue": "sum", "Profit": "sum"})
-            .sort_values("YearMonth")
-            .reset_index(drop=True)
-        )
+    if recency_col:
+        rec_avg = segment_df.groupby(segment_col)[recency_col].mean().reset_index(name="AvgRecencyDays")
+        summary = summary.merge(rec_avg, on=segment_col, how="left")
 
-        if len(monthly) < 6:
-            continue
+    strategy_map = {
+        "High Value Active": "Protect & Grow",
+        "Low Engagement": "Reactivation Campaign",
+        "High Value At Risk": "Immediate Sales Intervention",
+    }
 
-        last_3_revenue = monthly["Revenue"].tail(3).sum()
-        last_3_profit = monthly["Profit"].tail(3).sum()
-        last_3_margin = (last_3_profit / last_3_revenue * 100) if last_3_revenue != 0 else 0
+    priority_map = {
+        "High Value Active": "Medium",
+        "Low Engagement": "High",
+        "High Value At Risk": "Critical",
+    }
 
-        _, revenue_forecast = generate_forecast_from_monthly(
-            monthly[["YearMonth", "Revenue"]],
-            "Revenue",
-            forecast_months,
-        )
+    summary["Strategy"] = summary[segment_col].map(strategy_map).fillna("Review")
+    summary["Priority"] = summary[segment_col].map(priority_map).fillna("Medium")
 
-        _, profit_forecast = generate_forecast_from_monthly(
-            monthly[["YearMonth", "Profit"]],
-            "Profit",
-            forecast_months,
-        )
-
-        next_3_revenue = revenue_forecast["ForecastValue"].sum()
-        next_3_profit = profit_forecast["ForecastValue"].sum()
-        next_3_margin = (next_3_profit / next_3_revenue * 100) if next_3_revenue != 0 else 0
-
-        growth_pct = (
-            ((next_3_revenue - last_3_revenue) / last_3_revenue) * 100
-            if last_3_revenue != 0 else 0
-        )
-
-        if next_3_margin < 20:
-            ceo_comment = "Margin watch: improve pricing or reduce cost"
-        elif growth_pct < 0:
-            ceo_comment = "Revenue softening: GM action required"
-        else:
-            ceo_comment = "Stable outlook: continue execution discipline"
-
-        result_rows.append(
-            {
-                "BusinessLine": business_line,
-                "Last3M_Revenue": round(last_3_revenue, 2),
-                "Next3M_ForecastRevenue": round(next_3_revenue, 2),
-                "RevenueGrowthPct": round(growth_pct, 2),
-                "Last3M_Profit": round(last_3_profit, 2),
-                "Next3M_ForecastProfit": round(next_3_profit, 2),
-                "Last3M_MarginPct": round(last_3_margin, 2),
-                "Next3M_MarginPct": round(next_3_margin, 2),
-                "CEO_Comment": ceo_comment,
-            }
-        )
-
-    result_df = pd.DataFrame(result_rows)
-
-    if not result_df.empty:
-        result_df = result_df.sort_values(by="Next3M_ForecastRevenue", ascending=False)
-
-    return result_df
+    return summary.sort_values("Customers", ascending=False)
 
 
 # ============================================================
-# SECTION 7: PLANT-LEVEL FORECAST ACCOUNTABILITY
-#
-# PURPOSE:
-# Build plant-level management accountability by:
-# Country -> Plant -> Business Line
+# MAIN LOAD
 # ============================================================
-def create_plant_forecast_table(df: pd.DataFrame, forecast_months: int = 3) -> pd.DataFrame:
-    """
-    Create plant-level forecast accountability table.
+try:
+    sales_raw = load_sales_data()
+except FileNotFoundError as e:
+    st.error(str(e))
+    st.stop()
 
-    Returns
-    -------
-    pd.DataFrame
-        Forecast accountability table by country, plant,
-        and business line.
-    """
-    result_rows: list[dict] = []
-
-    grouped = df.groupby(["Country", "Plant", "BusinessLine"])
-
-    for (country, plant, business_line), sub_df in grouped:
-        monthly = (
-            sub_df.groupby("YearMonth", as_index=False)
-            .agg({"Revenue": "sum", "Profit": "sum"})
-            .sort_values("YearMonth")
-            .reset_index(drop=True)
-        )
-
-        if len(monthly) < 6:
-            continue
-
-        last_3_revenue = monthly["Revenue"].tail(3).sum()
-        last_3_profit = monthly["Profit"].tail(3).sum()
-        last_3_margin = (last_3_profit / last_3_revenue * 100) if last_3_revenue != 0 else 0
-
-        _, revenue_forecast = generate_forecast_from_monthly(
-            monthly[["YearMonth", "Revenue"]],
-            "Revenue",
-            forecast_months,
-        )
-
-        _, profit_forecast = generate_forecast_from_monthly(
-            monthly[["YearMonth", "Profit"]],
-            "Profit",
-            forecast_months,
-        )
-
-        next_3_revenue = revenue_forecast["ForecastValue"].sum()
-        next_3_profit = profit_forecast["ForecastValue"].sum()
-        next_3_margin = (next_3_profit / next_3_revenue * 100) if next_3_revenue != 0 else 0
-
-        growth_pct = (
-            ((next_3_revenue - last_3_revenue) / last_3_revenue) * 100
-            if last_3_revenue != 0 else 0
-        )
-
-        if next_3_margin < 20:
-            ceo_action = "Margin risk – cost or pricing action needed"
-        elif growth_pct < 0:
-            ceo_action = "Revenue decline – GM attention required"
-        else:
-            ceo_action = "Stable / growing"
-
-        result_rows.append(
-            {
-                "Country": country,
-                "Plant": plant,
-                "BusinessLine": business_line,
-                "Last3M_Revenue": round(last_3_revenue, 2),
-                "Next3M_ForecastRevenue": round(next_3_revenue, 2),
-                "RevenueGrowthPct": round(growth_pct, 2),
-                "Last3M_Profit": round(last_3_profit, 2),
-                "Next3M_ForecastProfit": round(next_3_profit, 2),
-                "Last3M_MarginPct": round(last_3_margin, 2),
-                "Next3M_MarginPct": round(next_3_margin, 2),
-                "CEO_Action": ceo_action,
-            }
-        )
-
-    result_df = pd.DataFrame(result_rows)
-
-    if not result_df.empty:
-        result_df = result_df.sort_values(by="Next3M_ForecastRevenue", ascending=False)
-
-    return result_df
-
+sales_df = prepare_sales_data(sales_raw)
+segments_df = load_segments_data()
+recommendations_df = load_recommendations_data()
 
 # ============================================================
-# SECTION 8: TOP CUSTOMER FORECAST TABLE
+# SIDEBAR FILTERS
 # ============================================================
-def create_top_customer_forecast_table(
-    df: pd.DataFrame,
-    top_n: int = 10,
-    forecast_months: int = 3,
-) -> pd.DataFrame:
-    """
-    Create forecast table for top customers.
-    """
-    top_customers = (
-        df.groupby(["CustomerName", "BusinessLine"], as_index=False)["Revenue"]
-        .sum()
-        .sort_values(by="Revenue", ascending=False)
-        .head(top_n)
-    )
+st.sidebar.header("📊 Executive Filters")
 
-    result_rows: list[dict] = []
+country_options = sorted(sales_df["Country"].dropna().unique()) if "Country" in sales_df.columns else []
+product_options = sorted(sales_df["ProductName"].dropna().unique()) if "ProductName" in sales_df.columns else []
+business_line_options = sorted(sales_df["BusinessLine"].dropna().unique()) if "BusinessLine" in sales_df.columns else []
+channel_options = sorted(sales_df["SalesChannel"].dropna().unique()) if "SalesChannel" in sales_df.columns else []
 
-    for _, row in top_customers.iterrows():
-        customer_name = row["CustomerName"]
-        business_line = row["BusinessLine"]
-
-        sub_df = df[
-            (df["CustomerName"] == customer_name) &
-            (df["BusinessLine"] == business_line)
-        ].copy()
-
-        monthly = (
-            sub_df.groupby("YearMonth", as_index=False)
-            .agg({"Revenue": "sum", "Profit": "sum"})
-            .sort_values("YearMonth")
-            .reset_index(drop=True)
-        )
-
-        if len(monthly) < 4:
-            continue
-
-        historical_revenue = monthly["Revenue"].sum()
-        historical_profit = monthly["Profit"].sum()
-        historical_margin = (
-            (historical_profit / historical_revenue) * 100
-            if historical_revenue != 0 else 0
-        )
-
-        _, revenue_forecast = generate_forecast_from_monthly(
-            monthly[["YearMonth", "Revenue"]],
-            "Revenue",
-            forecast_months,
-        )
-
-        forecast_revenue = revenue_forecast["ForecastValue"].sum()
-
-        recent_revenue = monthly["Revenue"].tail(min(3, len(monthly))).sum()
-
-        if historical_margin < 15:
-            risk_flag = "Low Margin"
-        elif forecast_revenue < recent_revenue:
-            risk_flag = "Revenue Risk"
-        else:
-            risk_flag = "Healthy"
-
-        result_rows.append(
-            {
-                "CustomerName": customer_name,
-                "BusinessLine": business_line,
-                "HistoricalRevenue": round(historical_revenue, 2),
-                "ForecastNext3MRevenue": round(forecast_revenue, 2),
-                "HistoricalProfit": round(historical_profit, 2),
-                "MarginPct": round(historical_margin, 2),
-                "RiskFlag": risk_flag,
-            }
-        )
-
-    result_df = pd.DataFrame(result_rows)
-
-    if not result_df.empty:
-        result_df = result_df.sort_values(by="ForecastNext3MRevenue", ascending=False)
-
-    return result_df
-
-
-# ============================================================
-# SECTION 9: MARGIN WATCHLIST
-# ============================================================
-def create_margin_watchlist(df: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
-    """
-    Create a low-margin watchlist for management review.
-    """
-    watchlist = (
-        df.groupby("ProductName", as_index=False)
-        .agg({"Revenue": "sum", "Profit": "sum"})
-    )
-
-    watchlist["MarginPct"] = np.where(
-        watchlist["Revenue"] != 0,
-        (watchlist["Profit"] / watchlist["Revenue"]) * 100,
-        0,
-    )
-
-    watchlist = watchlist.sort_values(
-        by=["MarginPct", "Revenue"],
-        ascending=[True, False],
-    ).head(top_n)
-
-    watchlist["ManagementAction"] = np.where(
-        watchlist["MarginPct"] < 20,
-        "Review pricing / cost-down actions",
-        "Monitor",
-    )
-
-    return watchlist
-
-
-# ============================================================
-# SECTION 10: LOAD SOURCE DATA
-# ============================================================
-df = load_data()
-
-# Load customer segmentation
-customer_segments_df = load_customer_segments()
-
-# Merge segmentation into main dataset
-df = df.merge(
-    customer_segments_df[["CustomerID", "SegmentName"]],
-    on="CustomerID",
-    how="left"
+selected_countries = st.sidebar.multiselect(
+    "Country",
+    options=country_options,
+    default=country_options,
 )
 
-# Load recommender_system
-recommendations_df = load_recommendations()
+selected_products = st.sidebar.multiselect(
+    "Product",
+    options=product_options,
+    default=product_options,
+)
+
+selected_business_lines = st.sidebar.multiselect(
+    "Business Line",
+    options=business_line_options,
+    default=business_line_options,
+)
+
+selected_channels = st.sidebar.multiselect(
+    "Sales Channel",
+    options=channel_options,
+    default=channel_options,
+)
+
+filtered_df = sales_df.copy()
+
+if selected_countries and "Country" in filtered_df.columns:
+    filtered_df = filtered_df[filtered_df["Country"].isin(selected_countries)]
+
+if selected_products and "ProductName" in filtered_df.columns:
+    filtered_df = filtered_df[filtered_df["ProductName"].isin(selected_products)]
+
+if selected_business_lines and "BusinessLine" in filtered_df.columns:
+    filtered_df = filtered_df[filtered_df["BusinessLine"].isin(selected_business_lines)]
+
+if selected_channels and "SalesChannel" in filtered_df.columns:
+    filtered_df = filtered_df[filtered_df["SalesChannel"].isin(selected_channels)]
 
 # ============================================================
-# SECTION 11: DASHBOARD TITLE
+# HEADER
 # ============================================================
-st.title("📈 Enterprise AI Revenue Intelligence Platform")
-st.caption(
-    "Executive dashboard for revenue analysis, management accountability, "
-    "and predictive business planning."
+st.markdown('<div class="main-title">📈 Enterprise AI Revenue Intelligence Platform</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="sub-title">Executive decision platform for revenue visibility, forecasting, customer intelligence, and AI-driven commercial action across medical equipment, autonomous components, and smart-device manufacturing.</div>',
+    unsafe_allow_html=True,
 )
 
 st.markdown(
     """
-This dashboard gives senior leadership a structured view of:
-- current commercial performance
-- business-line accountability
-- plant accountability by country and site
-- customer concentration
-- forecast outlook
-- margin pressure points
+This platform demonstrates how **AI/ML models are embedded into commercial decision-making**:
 
-It is designed to help the CEO, CIO, CFO, and GMs move from passive reporting
-to action-oriented performance management.
+- Revenue and profitability visibility  
+- Predictive forecasting for proactive planning  
+- Customer segmentation for targeted intervention  
+- AI-driven cross-sell recommendation logic  
+
+Designed for **CIO-level strategy, accountability, and business impact**.
 """
 )
 
-
 # ============================================================
-# SECTION 12: EXECUTIVE KPIS
+# NAVIGATION
 # ============================================================
-total_revenue = df["Revenue"].sum()
-total_profit = df["Profit"].sum()
-total_orders = df["OrderID"].nunique()
-total_customers = df["CustomerID"].nunique()
-
-kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-
-with kpi1:
-    st.metric("Total Revenue", f"${total_revenue:,.0f}")
-
-with kpi2:
-    st.metric("Total Profit", f"${total_profit:,.0f}")
-
-with kpi3:
-    st.metric("Total Orders", f"{total_orders:,}")
-
-with kpi4:
-    st.metric("Total Customers", f"{total_customers:,}")
-
-# ============================================================
-# CUSTOMER SEGMENTATION INSIGHTS
-# ============================================================
-st.subheader("🤖 Customer Segmentation Insights")
-
-# Segment distribution
-segment_counts = (
-    customer_segments_df["SegmentName"]
-    .value_counts()
-    .reset_index()
+section = st.radio(
+    "Select View",
+    [
+        "1. KPI Overview",
+        "2. Revenue & Profit Analysis",
+        "3. Forecasting & Planning",
+        "4. Customer Intelligence",
+        "5. AI Recommendation Engine",
+    ],
+    horizontal=True,
 )
 
-segment_counts.columns = ["Segment", "CustomerCount"]
-
-fig_segment = px.bar(
-    segment_counts,
-    x="Segment",
-    y="CustomerCount",
-    title="Customer Segment Distribution",
-    text_auto=True,
-)
-
-st.plotly_chart(fig_segment, use_container_width=True)
-
-st.subheader("⚠️ High Value Customers At Risk")
-
-at_risk_customers = customer_segments_df[
-    customer_segments_df["SegmentName"] == "High Value At Risk"
-].sort_values(by="TotalRevenue", ascending=False)
-
-st.dataframe(at_risk_customers.head(20), use_container_width=True)
-
-
 # ============================================================
-# SECTION 13: FILTERS
+# 1. KPI OVERVIEW
 # ============================================================
-st.subheader("Dashboard Filters")
-
-filter_col1, filter_col2, filter_col3 = st.columns(3)
-
-with filter_col1:
-    selected_regions = st.multiselect(
-        "Select Region(s)",
-        options=sorted(df["Region"].unique()),
-        default=sorted(df["Region"].unique()),
+if section == "1. KPI Overview":
+    st.markdown('<div class="section-title">1️⃣ KPI Overview</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-note">Leadership summary of the current business scope across selected countries, products, business lines, and channels.</div>',
+        unsafe_allow_html=True,
     )
 
-with filter_col2:
-    selected_business_lines = st.multiselect(
-        "Select Business Line(s)",
-        options=sorted(df["BusinessLine"].unique()),
-        default=sorted(df["BusinessLine"].unique()),
+    total_revenue = filtered_df["Revenue"].sum() if "Revenue" in filtered_df.columns else 0
+    total_profit = filtered_df["Profit"].sum() if "Profit" in filtered_df.columns else 0
+    margin_pct = safe_divide(total_profit, total_revenue) * 100
+    total_orders = len(filtered_df)
+    total_customers = filtered_df["CustomerID"].nunique() if "CustomerID" in filtered_df.columns else 0
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.metric("Total Revenue", fmt_currency(total_revenue))
+    with c2:
+        st.metric("Total Profit", fmt_currency(total_profit))
+    with c3:
+        st.metric("Profit Margin", f"{margin_pct:.2f}%")
+    with c4:
+        st.metric("Active Customers", f"{total_customers:,}")
+
+    st.info("This screen provides a concise executive snapshot of commercial performance and portfolio scale.")
+
+# ============================================================
+# 2. REVENUE & PROFIT ANALYSIS
+# ============================================================
+elif section == "2. Revenue & Profit Analysis":
+    st.markdown('<div class="section-title">2️⃣ Revenue & Profit Analysis</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-note">Commercial analysis by business line, country, and product to identify revenue concentration, profitability, and margin risk.</div>',
+        unsafe_allow_html=True,
     )
 
-with filter_col3:
-    selected_countries = st.multiselect(
-        "Select Country(s)",
-        options=sorted(df["Country"].unique()),
-        default=sorted(df["Country"].unique()),
+    col1, col2 = st.columns(2)
+
+    with col1:
+        with st.container(border=True):
+            st.subheader("Revenue Contribution by Business Line")
+            if "BusinessLine" in filtered_df.columns:
+                rev_bl = filtered_df.groupby("BusinessLine")["Revenue"].sum().reset_index()
+                fig = px.bar(
+                    rev_bl,
+                    x="BusinessLine",
+                    y="Revenue",
+                    color="BusinessLine",
+                    title="Revenue Contribution by Business Line",
+                    labels={"BusinessLine": "Business Line", "Revenue": "Revenue (USD)"},
+                    text_auto=".2s",
+                )
+                fig.update_layout(height=400, showlegend=False)
+                st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
+        with st.container(border=True):
+            st.subheader("Revenue Contribution by Region")
+            if "Country" in filtered_df.columns:
+                rev_region = filtered_df.groupby("Country")["Revenue"].sum().reset_index()
+                fig = px.bar(
+                    rev_region,
+                    x="Country",
+                    y="Revenue",
+                    color="Country",
+                    title="Revenue Contribution by Region",
+                    labels={"Country": "Country / Region", "Revenue": "Revenue (USD)"},
+                    text_auto=".2s",
+                )
+                fig.update_layout(height=400, showlegend=False)
+                st.plotly_chart(fig, use_container_width=True)
+
+    col3, col4 = st.columns(2)
+
+    with col3:
+        with st.container(border=True):
+            st.subheader("Profit Contribution by Product")
+            if {"ProductName", "Profit"}.issubset(filtered_df.columns):
+                profit_prod = (
+                    filtered_df.groupby("ProductName")["Profit"]
+                    .sum()
+                    .sort_values(ascending=False)
+                    .reset_index()
+                )
+                fig = px.bar(
+                    profit_prod,
+                    x="ProductName",
+                    y="Profit",
+                    color="ProductName",
+                    title="Profit Contribution by Product",
+                    labels={"ProductName": "Product", "Profit": "Profit (USD)"},
+                    text_auto=".2s",
+                )
+                fig.update_layout(height=450, showlegend=False)
+                st.plotly_chart(fig, use_container_width=True)
+
+    with col4:
+        with st.container(border=True):
+            st.subheader("Margin Risk and Action Watchlist")
+            if {"BusinessLine", "ProductName", "Revenue", "Profit"}.issubset(filtered_df.columns):
+                margin_df = (
+                    filtered_df.groupby(["BusinessLine", "ProductName"], as_index=False)[["Revenue", "Profit"]]
+                    .sum()
+                )
+                margin_df["MarginPct"] = np.where(
+                    margin_df["Revenue"] > 0,
+                    (margin_df["Profit"] / margin_df["Revenue"]) * 100,
+                    0,
+                )
+
+                def risk_level(m: float) -> str:
+                    if m < 30:
+                        return "High Risk"
+                    if m < 35:
+                        return "Watch"
+                    return "Healthy"
+
+                def action_label(m: float) -> str:
+                    if m < 30:
+                        return "Cost / pricing review required"
+                    if m < 35:
+                        return "Monitor closely"
+                    return "Healthy"
+
+                margin_df["RiskLevel"] = margin_df["MarginPct"].apply(risk_level)
+                margin_df["ManagementAction"] = margin_df["MarginPct"].apply(action_label)
+
+                st.dataframe(
+                    margin_df.sort_values("MarginPct", ascending=True).head(10),
+                    use_container_width=True,
+                )
+
+    st.info("This screen helps leadership identify where commercial performance is concentrated and where profitability discipline is required.")
+
+# ============================================================
+# 3. FORECASTING & PLANNING
+# ============================================================
+elif section == "3. Forecasting & Planning":
+    st.markdown('<div class="section-title">3️⃣ Forecasting & Planning</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-note">ML-based revenue forecasting and business-line outlook to support commercial planning, accountability, and early intervention.</div>',
+        unsafe_allow_html=True,
     )
 
-filtered_df = df[
-    (df["Region"].isin(selected_regions)) &
-    (df["BusinessLine"].isin(selected_business_lines)) &
-    (df["Country"].isin(selected_countries))
-].copy()
+    monthly_df, forecast_df = build_monthly_forecast(filtered_df, forecast_months=3)
 
+    col1, col2 = st.columns(2)
 
-# ============================================================
-# SECTION 14: FILTERED KPIS
-# ============================================================
-filtered_revenue = filtered_df["Revenue"].sum()
-filtered_profit = filtered_df["Profit"].sum()
-filtered_orders = filtered_df["OrderID"].nunique()
-filtered_customers = filtered_df["CustomerID"].nunique()
+    with col1:
+        with st.container(border=True):
+            st.subheader("Monthly Revenue Trend and Forecast")
+            if not monthly_df.empty and not forecast_df.empty:
+                history_df = monthly_df.copy()
+                history_df["Series"] = "Historical Revenue"
+                history_df = history_df.rename(columns={"Revenue": "Value"})
 
-st.subheader("Filtered Executive Summary")
+                future_df = forecast_df.copy()
+                future_df["Series"] = "Forecast Revenue"
+                future_df = future_df.rename(columns={"ForecastRevenue": "Value"})
 
-fkpi1, fkpi2, fkpi3, fkpi4 = st.columns(4)
+                chart_df = pd.concat(
+                    [
+                        history_df[["MonthStart", "Value", "Series"]],
+                        future_df[["MonthStart", "Value", "Series"]],
+                    ],
+                    ignore_index=True,
+                )
 
-with fkpi1:
-    st.metric("Filtered Revenue", f"${filtered_revenue:,.0f}")
+                fig = px.line(
+                    chart_df,
+                    x="MonthStart",
+                    y="Value",
+                    color="Series",
+                    markers=True,
+                    title="Revenue Forecast (AI Model)",
+                    labels={"MonthStart": "Month", "Value": "Revenue (USD)", "Series": "Series"},
+                )
+                fig.update_layout(height=450)
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.warning("Not enough monthly data to generate forecast.")
 
-with fkpi2:
-    st.metric("Filtered Profit", f"${filtered_profit:,.0f}")
+    with col2:
+        with st.container(border=True):
+            st.subheader("Business Line Performance Outlook")
 
-with fkpi3:
-    st.metric("Filtered Orders", f"{filtered_orders:,}")
+            if (
+                "BusinessLine" in filtered_df.columns
+                and "MonthStart" in filtered_df.columns
+                and "Revenue" in filtered_df.columns
+                and "Profit" in filtered_df.columns
+                and not forecast_df.empty
+            ):
+                latest_month = filtered_df["MonthStart"].max()
+                last3_df = filtered_df[
+                    filtered_df["MonthStart"] >= latest_month - pd.DateOffset(months=2)
+                ].copy()
 
-with fkpi4:
-    st.metric("Filtered Customers", f"{filtered_customers:,}")
+                hist = (
+                    last3_df.groupby("BusinessLine", as_index=False)[["Revenue", "Profit"]]
+                    .sum()
+                    .rename(columns={"Revenue": "Last3MRevenue", "Profit": "Last3MProfit"})
+                )
 
+                total_hist = hist["Last3MRevenue"].sum()
+                total_forecast = forecast_df["ForecastRevenue"].sum()
 
-# ============================================================
-# SECTION 15: REVENUE BY BUSINESS LINE
-# ============================================================
-revenue_by_business = (
-    filtered_df.groupby("BusinessLine", as_index=False)["Revenue"]
-    .sum()
-    .sort_values(by="Revenue", ascending=False)
-)
+                hist["Next3MForecastRevenue"] = np.where(
+                    total_hist > 0,
+                    (hist["Last3MRevenue"] / total_hist) * total_forecast,
+                    0,
+                )
 
-fig_business = px.bar(
-    revenue_by_business,
-    x="BusinessLine",
-    y="Revenue",
-    title="Revenue by Business Line",
-    text_auto=".2s",
-)
+                hist["RevenueGrowthPct"] = np.where(
+                    hist["Last3MRevenue"] > 0,
+                    ((hist["Next3MForecastRevenue"] - hist["Last3MRevenue"]) / hist["Last3MRevenue"]) * 100,
+                    0,
+                )
 
-st.plotly_chart(fig_business, use_container_width=True)
+                hist["Last3MMarginPct"] = np.where(
+                    hist["Last3MRevenue"] > 0,
+                    (hist["Last3MProfit"] / hist["Last3MRevenue"]) * 100,
+                    0,
+                )
 
+                hist["Next3MForecastMarginPct"] = np.where(
+                    hist["RevenueGrowthPct"] < 0,
+                    hist["Last3MMarginPct"] - 1.0,
+                    hist["Last3MMarginPct"] + 0.5,
+                )
 
-# ============================================================
-# SECTION 16: REVENUE BY REGION
-# ============================================================
-revenue_by_region = (
-    filtered_df.groupby("Region", as_index=False)["Revenue"]
-    .sum()
-    .sort_values(by="Revenue", ascending=False)
-)
+                def outlook_label(row: pd.Series) -> str:
+                    if row["RevenueGrowthPct"] < -5 and row["Next3MForecastMarginPct"] < row["Last3MMarginPct"]:
+                        return "High-risk business line"
+                    if row["RevenueGrowthPct"] < 0:
+                        return "Revenue softening"
+                    if row["Next3MForecastMarginPct"] < row["Last3MMarginPct"]:
+                        return "Margin pressure"
+                    return "Stable / positive outlook"
 
-fig_region = px.bar(
-    revenue_by_region,
-    x="Region",
-    y="Revenue",
-    title="Revenue by Region",
-    text_auto=".2s",
-)
+                hist["Outlook"] = hist.apply(outlook_label, axis=1)
 
-st.plotly_chart(fig_region, use_container_width=True)
+                st.dataframe(hist, use_container_width=True)
+            else:
+                st.warning("Business line outlook cannot be generated from current data.")
 
-
-# ============================================================
-# SECTION 17: PROFIT BY PRODUCT
-# ============================================================
-profit_by_product = (
-    filtered_df.groupby("ProductName", as_index=False)["Profit"]
-    .sum()
-    .sort_values(by="Profit", ascending=False)
-)
-
-fig_profit = px.bar(
-    profit_by_product,
-    x="ProductName",
-    y="Profit",
-    title="Profit by Product",
-    text_auto=".2s",
-)
-
-st.plotly_chart(fig_profit, use_container_width=True)
-
-
-# ============================================================
-# SECTION 18: MONTHLY REVENUE TREND
-# ============================================================
-monthly_revenue = (
-    filtered_df.groupby("YearMonth", as_index=False)["Revenue"]
-    .sum()
-    .sort_values(by="YearMonth")
-)
-
-fig_monthly = px.line(
-    monthly_revenue,
-    x="YearMonth",
-    y="Revenue",
-    title="Monthly Revenue Trend",
-    markers=True,
-)
-
-st.plotly_chart(fig_monthly, use_container_width=True)
-
-
-# ============================================================
-# SECTION 19: GROUP FORECAST
-# ============================================================
-st.subheader("📈 Group Revenue Forecast (Next 6 Months)")
-
-group_monthly_data, group_forecast_data = generate_group_forecast(
-    filtered_df,
-    forecast_months=6,
-)
-
-group_forecast_fig = go.Figure()
-
-group_forecast_fig.add_trace(
-    go.Scatter(
-        x=group_monthly_data["MonthIndex"],
-        y=group_monthly_data["Revenue"],
-        mode="lines+markers",
-        name="Actual Revenue",
+    forecast_value = forecast_df["ForecastRevenue"].sum() if not forecast_df.empty else 0
+    st.info(
+        f"The forecast model indicates an estimated {fmt_currency(forecast_value)} in projected revenue over the next 3 months based on recent trend patterns."
     )
-)
 
-group_forecast_fig.add_trace(
-    go.Scatter(
-        x=group_forecast_data["MonthIndex"],
-        y=group_forecast_data["ForecastValue"],
-        mode="lines+markers",
-        name="Forecast Revenue",
-        line=dict(dash="dash"),
+# ============================================================
+# 4. CUSTOMER INTELLIGENCE
+# ============================================================
+elif section == "4. Customer Intelligence":
+    st.markdown('<div class="section-title">4️⃣ Customer Intelligence</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-note">Customer segmentation translated into prioritisation, risk visibility, and commercial intervention logic.</div>',
+        unsafe_allow_html=True,
     )
-)
 
-group_forecast_fig.update_layout(
-    title="Group Revenue Forecast vs Actual",
-    xaxis_title="Time Index",
-    yaxis_title="Revenue",
-)
+    segment_summary_df = summarize_customer_segments(segments_df)
 
-st.plotly_chart(group_forecast_fig, use_container_width=True)
+    col1, col2 = st.columns(2)
 
+    with col1:
+        with st.container(border=True):
+            st.subheader("Customer Segment Distribution")
+            if not segment_summary_df.empty and "SegmentName" in segment_summary_df.columns:
+                fig = px.bar(
+                    segment_summary_df,
+                    x="SegmentName",
+                    y="Customers",
+                    color="SegmentName",
+                    title="Customer Segment Distribution",
+                    labels={"SegmentName": "Segment", "Customers": "Customer Count"},
+                    text_auto=True,
+                )
+                fig.update_layout(height=430, showlegend=False)
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.warning("Customer segment data is not available.")
 
-# ============================================================
-# SECTION 20: BUSINESS LINE FORECAST ACCOUNTABILITY
-# ============================================================
-st.subheader("Business Line Forecast Accountability")
+    with col2:
+        with st.container(border=True):
+            st.subheader("Segment Summary")
+            if not segment_summary_df.empty:
+                st.dataframe(segment_summary_df, use_container_width=True)
+            else:
+                st.warning("Segment summary is not available.")
 
-business_line_forecast_df = create_business_line_forecast_table(
-    filtered_df,
-    forecast_months=3,
-)
+    with st.container(border=True):
+        st.subheader("High Value Customers at Risk")
 
-st.dataframe(business_line_forecast_df, use_container_width=True)
+        if segments_df is not None and not segments_df.empty:
+            segment_col = find_column(segments_df, ["SegmentName"])
+            revenue_col = find_column(segments_df, ["TotalRevenue", "Revenue"])
+            recency_col = find_column(segments_df, ["LastPurchaseDaysAgo"])
+            customer_id_col = find_column(segments_df, ["CustomerID"])
+            customer_name_col = find_column(segments_df, ["CustomerName"])
+            profit_col = find_column(segments_df, ["TotalProfit", "Profit"])
+            orders_col = find_column(segments_df, ["TotalOrders", "Orders"])
+            avg_order_col = find_column(segments_df, ["AvgOrderValue"])
 
+            if segment_col and revenue_col and recency_col:
+                at_risk_df = segments_df[
+                    segments_df[segment_col].astype(str).str.contains("At Risk", case=False, na=False)
+                ].copy()
 
-# ============================================================
-# SECTION 21: PLANT-LEVEL FORECAST ACCOUNTABILITY
-# ============================================================
-st.subheader("🏭 Plant-Level Forecast Accountability")
+                if not at_risk_df.empty:
+                    at_risk_df["RiskScore"] = (
+                        at_risk_df[recency_col].fillna(0) * 0.5
+                        + at_risk_df[revenue_col].fillna(0) * -0.00001
+                    )
+                    at_risk_df["Action"] = "Sales Director to engage within 7 days"
 
-plant_forecast_df = create_plant_forecast_table(
-    filtered_df,
-    forecast_months=3,
-)
+                    cols = [
+                        c for c in [
+                            customer_id_col,
+                            customer_name_col,
+                            revenue_col,
+                            profit_col,
+                            orders_col,
+                            avg_order_col,
+                            recency_col,
+                            segment_col,
+                            "RiskScore",
+                            "Action",
+                        ] if c and c in at_risk_df.columns
+                    ]
 
-st.dataframe(plant_forecast_df, use_container_width=True)
-
-
-# ============================================================
-# SECTION 22: TOP CUSTOMER FORECAST TABLE
-# ============================================================
-st.subheader("Top Customer Forecast Table")
-
-top_customer_forecast_df = create_top_customer_forecast_table(
-    filtered_df,
-    top_n=10,
-    forecast_months=3,
-)
-
-st.dataframe(top_customer_forecast_df, use_container_width=True)
-
-
-# ============================================================
-# SECTION 23: MARGIN WATCHLIST
-# ============================================================
-st.subheader("Margin Watchlist")
-
-margin_watchlist_df = create_margin_watchlist(filtered_df, top_n=10)
-
-st.dataframe(margin_watchlist_df, use_container_width=True)
-
-# ============================================================
-# PRODUCT RECOMMENDATION ENGINE
-# ============================================================
-st.subheader("🧠 AI Product Recommendation Engine")
-
-st.markdown(
-    """
-This section shows cross-sell opportunities based on customer
-purchase behavior. It identifies products that are frequently
-bought together by the same customers.
-"""
-)
-
-# Select product
-selected_product = st.selectbox(
-    "Select a product to see recommendations:",
-    sorted(recommendations_df["BaseProduct"].unique())
-)
-
-# Filter recommendations
-filtered_recs = recommendations_df[
-    recommendations_df["BaseProduct"] == selected_product
-].sort_values(by="CoPurchaseScore", ascending=False)
-
-st.write(f"### Recommended products for: {selected_product}")
-st.dataframe(filtered_recs, use_container_width=True)
+                    st.dataframe(
+                        at_risk_df.sort_values("RiskScore", ascending=False).head(10)[cols],
+                        use_container_width=True,
+                    )
+                else:
+                    st.info("No high-value at-risk customers identified.")
+            else:
+                st.warning("Required segmentation columns are missing.")
+        else:
+            st.warning("customer_segments.csv is not available.")
 
 # ============================================================
-# SECTION 24: TRANSACTION PREVIEW
+# 5. AI RECOMMENDATION ENGINE
 # ============================================================
-st.subheader("Transaction Data Preview")
-st.dataframe(filtered_df.head(50), use_container_width=True)
+elif section == "5. AI Recommendation Engine":
+    st.markdown('<div class="section-title">5️⃣ AI Recommendation Engine</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-note">Recommendation logic translated into cross-sell opportunity, commercial targeting, and estimated revenue uplift.</div>',
+        unsafe_allow_html=True,
+    )
 
+    with st.container(border=True):
+        st.subheader("Cross-Sell Revenue Opportunity")
 
-# ============================================================
-# SECTION 25: EXECUTIVE INTERPRETATION
-# ============================================================
-st.markdown(
-    """
----
-### Executive Interpretation
+        if recommendations_df is not None and not recommendations_df.empty:
+            base_product_col = find_column(recommendations_df, ["BaseProduct"])
+            reco_product_col = find_column(recommendations_df, ["RecommendedProduct"])
+            score_col = find_column(recommendations_df, ["CoPurchaseScore", "Score"])
 
-This dashboard now supports leadership at multiple levels:
+            if base_product_col and reco_product_col and score_col:
+                selected_base_product = st.selectbox(
+                    "Select Base Product",
+                    sorted(recommendations_df[base_product_col].dropna().unique())
+                )
 
-- **Group level** for total company outlook
-- **Business-line level** for GM accountability
-- **Plant level** for site-by-site performance pressure
-- **Customer level** for commercial focus and retention action
-- **Margin watchlist** for pricing, sourcing, and cost discipline
+                reco_df = recommendations_df[
+                    recommendations_df[base_product_col] == selected_base_product
+                ].copy()
 
-This makes the platform more than a reporting dashboard.
-It becomes a management tool for revenue growth, profitability
-improvement, and executive decision-making.
-"""
-)
+                if {"ProductName", "UnitPrice"}.issubset(filtered_df.columns):
+                    avg_price_df = (
+                        filtered_df.groupby("ProductName", as_index=False)["UnitPrice"]
+                        .mean()
+                        .rename(columns={"ProductName": reco_product_col, "UnitPrice": "AvgUnitPrice"})
+                    )
+                    reco_df = reco_df.merge(avg_price_df, on=reco_product_col, how="left")
+                else:
+                    reco_df["AvgUnitPrice"] = 1000
+
+                reco_df["EligibleCustomers"] = np.maximum((reco_df[score_col] / 10).round(), 5)
+
+                reco_df["EstimatedRevenueUplift"] = (
+                    reco_df[score_col].fillna(0)
+                    * reco_df["AvgUnitPrice"].fillna(1000)
+                    * reco_df["EligibleCustomers"].fillna(5)
+                    * 0.08
+                )
+
+                reco_df["RecommendedAction"] = "Launch targeted cross-sell campaign"
+
+                reco_df = reco_df.sort_values("EstimatedRevenueUplift", ascending=False).head(5)
+
+                col1, col2 = st.columns([1.2, 1])
+
+                with col1:
+                    fig = px.bar(
+                        reco_df,
+                        x=reco_product_col,
+                        y="EstimatedRevenueUplift",
+                        color=reco_product_col,
+                        title="Cross-Sell Revenue Opportunity",
+                        labels={
+                            reco_product_col: "Recommended Product",
+                            "EstimatedRevenueUplift": "Estimated Revenue Uplift (USD)"
+                        },
+                        text_auto=".2s",
+                    )
+                    fig.update_layout(height=420, showlegend=False)
+                    st.plotly_chart(fig, use_container_width=True)
+
+                with col2:
+                    st.dataframe(
+                        reco_df[
+                            [
+                                base_product_col,
+                                reco_product_col,
+                                score_col,
+                                "AvgUnitPrice",
+                                "EligibleCustomers",
+                                "EstimatedRevenueUplift",
+                                "RecommendedAction",
+                            ]
+                        ],
+                        use_container_width=True,
+                    )
+
+                uplift_total = reco_df["EstimatedRevenueUplift"].sum()
+                st.info(
+                    f"For the selected base product, the current recommendation logic indicates an estimated cross-sell opportunity of approximately {fmt_currency(uplift_total)}."
+                )
+            else:
+                st.warning("Recommendation file exists but required columns are missing.")
+        else:
+            st.warning("product_recommendations.csv is not available.")
