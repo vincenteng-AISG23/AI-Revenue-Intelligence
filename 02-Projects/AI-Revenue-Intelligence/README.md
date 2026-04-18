@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This project demonstrates how **AI/ML models can be operationalised within an enterprise data platform** to drive measurable revenue outcomes, profitability insights, and strategic decision-making.
+This project demonstrates how **AI/ML models can be operationalised within an enterprise data platform** to drive measurable revenue outcomes, profitability insights, and strategic decision-making for the business.
 
 Designed from a **CIO / Head of IT perspective**, the platform integrates:
 
