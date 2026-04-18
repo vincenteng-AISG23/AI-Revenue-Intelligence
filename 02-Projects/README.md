@@ -1,54 +1,44 @@
-# AI for Smart Manufacturing Portfolio
+# Enterprise AI Revenue Intelligence Platform
 
-## 🚀 Purpose
-This repository demonstrates practical AI implementations aligned with real manufacturing and enterprise use cases.
-
----
-
-## 📌 Key Projects
-
-### 1. Predictive Maintenance (Manufacturing Operations)
-- Predict equipment failures using sensor data
-- Reduce downtime and maintenance costs
-
-### 2. Demand Forecasting (Supply Chain)
-- Predict product demand using historical sales data
-- Improve inventory planning and reduce stockouts
-
-### 3. Defect Detection (Quality Control)
-- Detect product defects using machine learning models
-- Improve product quality and reduce rework
+CIO-level AI platform designed to transform enterprise revenue operations through machine learning, data engineering, and intelligent decision support.
 
 ---
 
-## 🧱 Project Structure
-Each project includes:
-- Problem statement
-- Dataset
-- Python implementation
-- Model explanation
-- Results and insights
-- Business impact
+## 🔹 Key Capabilities
+
+- Revenue Forecasting (Linear Regression, Random Forest)
+- Customer Segmentation (K-Means Clustering)
+- Churn Risk Scoring (Logistic Regression)
+- Cross-Sell Recommendation Engine
+- Executive Dashboard (Streamlit)
 
 ---
 
-## 💼 Business Impact
-These projects are designed to solve real enterprise challenges:
+## 🔹 Business Impacts
 
-- Cost reduction (maintenance & waste)
-- Efficiency improvement (planning & operations)
-- Quality enhancement (defect reduction)
+- Improved revenue predictability and planning accuracy  
+- Identified high-value customer segments  
+- Enabled targeted cross-sell strategies  
+- Reduced reliance on manual analysis  
 
 ---
 
-## 🛠 Technology Stack
-- Python
-- Pandas
-- Scikit-learn
-- Matplotlib
+## 🔹 Full Project
+
+👉 [View Full Project Details](./02-Projects/AI-Revenue-Intelligence/README.md)
+
+---
+
+## 🔹 Technology Stack
+
+- Python (Pandas, NumPy, Scikit-learn)
+- Machine Learning Models
+- Streamlit Dashboard
+- Data Pipeline Design
 
 ---
 
 ## 👤 Author
-Vincent Eng Ping Choon  
-Group Head of IT | Digital Transformation Leader | Smart Manufacturing
+
+Vincent Eng  
+CIO | AI-driven Digital Transformation | Smart Manufacturing
